@@ -4,6 +4,7 @@ import statistics
 
 OFFSETS = {'north': (0, 1), 'east': (1, 0), 'south': (0, -1), 'west': (-1, 0)}
 
+#global world
 
 def generate_world(width):
     def f():
@@ -78,8 +79,15 @@ def run(map_width, max_steps, agent_function, loss_function, agent_reset_functio
     if animate:
         stddraw.setXscale(-0.5, map_width - 0.5)
         stddraw.setYscale(-0.5, map_width - 0.5)
+
+    #just makes world global so I can grab it
+    global world
     world = generate_world(map_width)
+
+    #just makes agent global so I can grab it
+    global agent
     agent = place_agent(world)
+
     loss = 0
     if animate:
         draw_world(world, agent)
@@ -106,8 +114,16 @@ def run(map_width, max_steps, agent_function, loss_function, agent_reset_functio
             stddraw.show(0)
     return loss
 
+#just returns the world in its current state
+def get_world():
+    return world
+
+#just returns current location of the agent
+def get_agent():
+    return agent
 
 def many_runs(map_width, max_steps, runs, agent_function, loss_function, agent_reset_function=lambda : None):
     return statistics.mean([run(map_width, max_steps, agent_function, loss_function, agent_reset_function, False) for i in range(runs)])
+
 
 
