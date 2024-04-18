@@ -9,17 +9,11 @@ You will need to implement a run_all function, which executes the many_runs func
 from vacuum import *
 import heapq
 import math
+import time
 
 directions = ['north', 'south', 'east', 'west']
-prevdirection = 'null'
 
-
-def random_agent(percept):
-    if (percept):
-        return 'clean'
-
-    return random.choice(directions)
-
+#probably not useful
 def dirty_squares_heuristic(state):
     dirty_squares = 0
     for x in get_world():
@@ -33,8 +27,10 @@ def manhattan_distance(agent, goal):
     return abs(x1-x2) + abs(y1-y2)
 
 
+
+
 #please note: this function is a piece of shit
-def minimize_manhattan_distance(agent, goal, nearest):
+def minimize_manhattan_distance(agent, goal):
     #finds the states of the squares surrounding the agent
     surrounding = get_surrounding()
     
@@ -47,33 +43,47 @@ def minimize_manhattan_distance(agent, goal, nearest):
             elif directions[i] in ['east', 'west']:
                 x += OFFSETS[directions[i]][0]
 
-            direction_and_dist.append((i, manhattan_distance(nearest, (x,y))))
+            direction_and_dist.append((i, manhattan_distance(goal, (x,y))))
             #print(manhattan_distance((x,y), goal))
     
     #direction index
     direction_and_dist.sort(key=lambda x: x[1])
-    print("best direction index", direction_and_dist) 
-    print("nearest dirt",find_nearest_dirt())
-    return direction_and_dist[random.randint(0,0)][0]
+    #print("best direction index", direction_and_dist) 
+    #print("nearest dirt",find_nearest_dirt())
+    if random.random() < 0.5:
+        return random.choice(direction_and_dist)[0]
+    else:
+        return direction_and_dist[0][0]
     
-
-def find_nearest_dirt():
+#finds dirty square nearest to the agent
+def find_nearest_dirt(check_list=None):
     world = get_world()
     agent = get_agent()
+
 
     best_distance = 1000
     best_coord = None
 
-    for x in range(len(world)):
-        for y in range(len(world)):
-            coord = (x, y)
+    if check_list == None:
+        for x in range(len(world)):
+            for y in range(len(world)):
+                coord = (x, y)
+                if world[x][y] == 'dirt':
+                    if best_distance > manhattan_distance(agent, coord):
+                        best_distance = manhattan_distance(agent, coord)
+                        best_coord = (x, y)
+    else:
+        for coord in check_list:
+            (x, y) = coord
             if world[x][y] == 'dirt':
                 if best_distance > manhattan_distance(agent, coord):
                     best_distance = manhattan_distance(agent, coord)
                     best_coord = (x, y)
 
+
     return best_coord
 
+#gets state of all surrounding squares
 def get_surrounding():
     direction_list = []
     world = get_world()
@@ -94,6 +104,8 @@ def get_surrounding():
 i = 0
 nearest = None
 previous_direction = -1
+
+#memory agents
 def entire_map_memory(percept):
     global i
     global nearest
@@ -127,8 +139,80 @@ def entire_map_memory(percept):
     else:
         previous_direction = best_direction
         return best_direction
-    
 
+i = 0
+random_choice = random.choice(directions)
+def neighboring_memory(percept):
+    global i
+    global random_choice
+    (x, y) = get_agent()
+
+    if (percept):
+        return 'clean'
+    
+    #gets surrounding
+    surrounding = get_surrounding()
+    if 'dirt' in surrounding:
+        if surrounding[0] == 'dirt':
+            return directions[0]
+        if surrounding[2] == 'dirt':
+            return directions[2]
+        if surrounding[1] == 'dirt':
+            return directions[1]
+        if surrounding[3] == 'dirt':
+            return directions[3]
+
+    
+    width = len(get_world())
+    if i < width // 5 + random.randint(-3,3):
+        i += 1
+        return random_choice
+    else:
+        i = 0
+        random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
+        return random_choice
+    
+#this one works, but is worse so for my blind memory one I'm going to choose to use my one that holds nothing in it's memory
+i = 0
+random_choice = random.choice(directions)
+prev_cleaned = []
+just_cleaned = False
+last_random_choice = None
+def blind_memory(percept):
+    global i
+    global random_choice
+    global prev_cleaned
+    global just_cleaned
+    global last_random_choice
+
+    agent = get_agent()
+    #time.sleep(0.05)
+    
+    if (percept):
+        if get_agent() not in prev_cleaned:
+            prev_cleaned.append(get_agent())
+        just_cleaned = True
+        return 'clean'
+    
+    width = len(get_world())
+    if i < width // 5 + random.randint(-3,3):
+        if (agent[0]+OFFSETS[random_choice][0], agent[1]+OFFSETS[random_choice][1]) in prev_cleaned and just_cleaned:
+            just_cleaned = False
+            i = 0
+            last_random_choice = random_choice
+            random_choice = random.choice([val for val in directions if val != random_choice and val != last_random_choice]) # chooses different random direction
+            return random_choice
+        i += 1
+        return random_choice
+    else:
+        just_cleaned = False
+        i = 0
+        last_random_choice = random_choice
+        random_choice = random.choice([val for val in directions if val != random_choice and val != last_random_choice]) # chooses different random direction
+        return random_choice
+
+
+#no memory agents
 i = 0
 nearest = None
 def entire_map_no_memory(percept):
@@ -153,10 +237,10 @@ def entire_map_no_memory(percept):
 
     #go to nearest dirt if nothing adjacent
     #print(find_nearest_dirt())
+    
     if nearest == None or get_world()[nearest[0]][nearest[1]] == 'clean':
         nearest = find_nearest_dirt()
-    return directions[minimize_manhattan_distance((x, y), find_nearest_dirt(), nearest)]
-
+    return directions[minimize_manhattan_distance((x, y), nearest)]
 
 i = 0
 random_choice = random.choice(directions)
@@ -189,12 +273,9 @@ def neighboring_no_memory(percept):
         i = 0
         random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
         return random_choice
-
     
-
 i = 0
 random_choice = random.choice(directions)
-
 def blind_no_memory(percept):
     global i
     global random_choice
@@ -211,33 +292,68 @@ def blind_no_memory(percept):
         random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
         return random_choice
     
-## input args for run: map_width, max_steps, agent_function, loss_function
 
-# run(20, 50000, random_agent, 'actions')
 
-## input args for many_runs: map_width, max_steps, runs, agent_function, loss_function
-
+#runs all other functions
 def run_all():
-    #standard parameter
+    #standard parameters
     map_width=20
     max_steps=50000
     num_runs=100
 
     #sums the total loss from all agents
     total = 0
+    loss_list = [0 for i in range(12)]
 
+    #no memory agents
     #entire map, no memory
-    #total += many_runs(map_width, max_steps, num_runs, entire_map_no_memory, 'actions')
-    #total += many_runs(map_width, max_steps, num_runs, entire_map_no_memory, 'dirt')
+    loss_list[0] += many_runs(map_width, max_steps, num_runs, entire_map_no_memory, 'actions')
+    loss_list[1] += many_runs(map_width, max_steps, num_runs, entire_map_no_memory, 'dirt')
+    print("entire_map_no_memory actions:", loss_list[0])
+    print("entire_map_no_memory dirt:", loss_list[1])
+    print()
+
 
     #neighboring, no memory
-    total += many_runs(map_width, max_steps, num_runs, neighboring_no_memory, 'actions')
-    total += many_runs(map_width, max_steps, num_runs, neighboring_no_memory, 'dirt')
+    loss_list[2] += many_runs(map_width, max_steps, num_runs, neighboring_no_memory, 'actions')
+    loss_list[3] += many_runs(map_width, max_steps, num_runs, neighboring_no_memory, 'dirt')
+    print("neighboring_no_memory actions:", loss_list[2])
+    print("neighboring_no_memory dirt:", loss_list[3])
+    print()
 
     #no map, no memory
-    total += many_runs(map_width, max_steps, num_runs, blind_no_memory, 'actions')
-    total += many_runs(map_width, max_steps, num_runs, blind_no_memory, 'dirt')
+    loss_list[4] += many_runs(map_width, max_steps, num_runs, blind_no_memory, 'actions')
+    loss_list[5] += many_runs(map_width, max_steps, num_runs, blind_no_memory, 'dirt')
+    print("blind_no_memory actions:", loss_list[4])
+    print("blind_no_memory dirt:", loss_list[5])
+    print()
 
-    return total
+    #memory agents
+    #entire map, memory
+    loss_list[6] += many_runs(map_width, max_steps, num_runs, entire_map_memory, 'actions')
+    loss_list[7] += many_runs(map_width, max_steps, num_runs, entire_map_memory, 'dirt')
+    print("entire_map_memory actions:", loss_list[6])
+    print("entire_map_memory dirt:", loss_list[7])
+    print()
+    
+    #neighboring, memory
+    loss_list[8] += many_runs(map_width, max_steps, num_runs, neighboring_memory, 'actions')
+    loss_list[9] += many_runs(map_width, max_steps, num_runs, neighboring_memory, 'dirt')
+    print("neighboring_memory actions:", loss_list[8])
+    print("neighboring_memory dirt:", loss_list[9])
+    print()
 
-print(run(20, 50000, entire_map_memory, "actions"))
+    #no map, memory
+    loss_list[10] += many_runs(map_width, max_steps, num_runs, blind_memory, 'actions')
+    loss_list[11] += many_runs(map_width, max_steps, num_runs, blind_memory, 'dirt')
+    print("blind_memory actions:", loss_list[10])
+    print("blind_memory dirt:", loss_list[11])
+    print()
+
+    print("Total:", sum(loss_list))
+
+run_all()
+#print(run(20, 50000, neighboring_memory, "actions"))
+
+#print(many_runs(20, 50000, 100, blind_memory, "actions"))
+#print(many_runs(20, 50000, 100, blind_no_memory, "actions"))
