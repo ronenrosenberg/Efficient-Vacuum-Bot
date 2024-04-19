@@ -7,9 +7,6 @@ You will need to implement a run_all function, which executes the many_runs func
 '''
 
 from vacuum import *
-import heapq
-import math
-import time
 
 directions = ['north', 'south', 'east', 'west']
 
@@ -26,11 +23,9 @@ def manhattan_distance(agent, goal):
     (x2, y2) = goal
     return abs(x1-x2) + abs(y1-y2)
 
-
-
-
 #please note: this function is a piece of shit
-def minimize_manhattan_distance(agent, goal):
+prev_moves = []
+def minimize_manhattan_distance(agent, goal, rand=True):
     #finds the states of the squares surrounding the agent
     surrounding = get_surrounding()
     
@@ -50,10 +45,19 @@ def minimize_manhattan_distance(agent, goal):
     direction_and_dist.sort(key=lambda x: x[1])
     #print("best direction index", direction_and_dist) 
     #print("nearest dirt",find_nearest_dirt())
-    if random.random() < 0.5:
-        return random.choice(direction_and_dist)[0]
+    if rand:
+        if random.random() < 0.5:
+            return random.choice(direction_and_dist)[0]
+        else:
+            prev = direction_and_dist[0][0]
+            return direction_and_dist[0][0]
     else:
-        return direction_and_dist[0][0]
+        if len(prev_moves) >= 3 and prev_moves[-1] == prev_moves[-3]:
+            return random.choice(direction_and_dist)[0]
+        else:
+            prev_moves.append(direction_and_dist[0][0])
+            return direction_and_dist[0][0]
+            
     
 #finds dirty square nearest to the agent
 def find_nearest_dirt(check_list=None):
@@ -104,12 +108,11 @@ def get_surrounding():
 i = 0
 nearest = None
 previous_direction = -1
-
 #memory agents
 def entire_map_memory(percept):
     global i
+    global random_choice
     global nearest
-    global previous_direction
     (x, y) = get_agent()
 
     if (percept):
@@ -127,29 +130,38 @@ def entire_map_memory(percept):
         if surrounding[3] == 'dirt':
             return directions[3]
 
-    #go to nearest dirt if nothing adjacent
-    #print(find_nearest_dirt())
     if nearest == None or get_world()[nearest[0]][nearest[1]] == 'clean':
         nearest = find_nearest_dirt()
-
-    best_direction = directions[minimize_manhattan_distance((x, y), find_nearest_dirt(), nearest)]
-    if previous_direction == best_direction:
-        previous_direction = random.randint(0,3)
-        return directions[previous_direction]
-    else:
-        previous_direction = best_direction
-        return best_direction
+    return directions[minimize_manhattan_distance((x, y), nearest, False)]
 
 i = 0
 random_choice = random.choice(directions)
+nearest = None
+to_clean = []
 def neighboring_memory(percept):
     global i
     global random_choice
+    global nearest
+    global to_clean
     (x, y) = get_agent()
 
     if (percept):
         return 'clean'
     
+    (x,y) = get_agent()
+    if x != len(get_world())-1 and (x+1, y) not in to_clean:
+        to_clean.append((x+1, y))
+    if x != 0 and (x-1, y) not in to_clean:
+        to_clean.append((x-1, y))
+    if y != len(get_world())-1 and (x, y+1) not in to_clean:
+        to_clean.append((x, y+1))
+    if y != 0 and (x, y-1) not in to_clean:
+        to_clean.append((x, y-1))
+    
+    for coord in to_clean:
+        if get_world()[coord[0]][coord[1]] == 'clean':
+            to_clean.remove(coord)
+
     #gets surrounding
     surrounding = get_surrounding()
     if 'dirt' in surrounding:
@@ -162,31 +174,40 @@ def neighboring_memory(percept):
         if surrounding[3] == 'dirt':
             return directions[3]
 
+    if nearest == None or get_world()[nearest[0]][nearest[1]] == 'clean':
+        nearest = find_nearest_dirt(to_clean)
+        if nearest == None:
+            width = len(get_world())
+            if i < width // 5 + random.randint(-3,3):
+                i += 1
+                return random_choice
+            else:
+                i = 0
+        
+            dont_go = None
+            match directions.index(random_choice):
+                case 1: dont_go = 0
+                case 0: dont_go = 1
+                case 2: dont_go = 3
+                case 3: dont_go = 2
+
+            random_choice = random.choice([val for val in directions if val != random_choice and val != directions[dont_go]]) # chooses different random direction
+            return random_choice
+    return directions[minimize_manhattan_distance((x, y), nearest)]
     
-    width = len(get_world())
-    if i < width // 5 + random.randint(-3,3):
-        i += 1
-        return random_choice
-    else:
-        i = 0
-        random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
-        return random_choice
-    
-#this one works, but is worse so for my blind memory one I'm going to choose to use my one that holds nothing in it's memory
+#this one works, but is worse so for my blind memory one I'm going to also use my one that holds nothing in it's memory
 i = 0
+stop = 0
 random_choice = random.choice(directions)
 prev_cleaned = []
 just_cleaned = False
-last_random_choice = None
 def blind_memory(percept):
     global i
     global random_choice
     global prev_cleaned
     global just_cleaned
-    global last_random_choice
 
     agent = get_agent()
-    #time.sleep(0.05)
     
     if (percept):
         if get_agent() not in prev_cleaned:
@@ -195,20 +216,27 @@ def blind_memory(percept):
         return 'clean'
     
     width = len(get_world())
-    if i < width // 5 + random.randint(-3,3):
+
+    dont_go = None
+    match directions.index(random_choice):
+        case 1: dont_go = 0
+        case 0: dont_go = 1
+        case 2: dont_go = 3
+        case 3: dont_go = 2
+    
+    if i < width // 3 + random.randint(-3,3):
         if (agent[0]+OFFSETS[random_choice][0], agent[1]+OFFSETS[random_choice][1]) in prev_cleaned and just_cleaned:
             just_cleaned = False
             i = 0
-            last_random_choice = random_choice
-            random_choice = random.choice([val for val in directions if val != random_choice and val != last_random_choice]) # chooses different random direction
+            
+            random_choice = random.choice([val for val in directions if val != random_choice and val != directions[dont_go]]) # chooses different random direction
             return random_choice
         i += 1
         return random_choice
     else:
         just_cleaned = False
         i = 0
-        last_random_choice = random_choice
-        random_choice = random.choice([val for val in directions if val != random_choice and val != last_random_choice]) # chooses different random direction
+        random_choice = random.choice([val for val in directions if val != random_choice and val != directions[dont_go]]) # chooses different random direction
         return random_choice
 
 
@@ -270,8 +298,15 @@ def neighboring_no_memory(percept):
         i += 1
         return random_choice
     else:
-        i = 0
-        random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
+        i=0
+        dont_go = None
+        match directions.index(random_choice):
+            case 1: dont_go = 0
+            case 0: dont_go = 1
+            case 2: dont_go = 3
+            case 3: dont_go = 2
+
+        random_choice = random.choice([val for val in directions if val != random_choice and val != directions[dont_go]]) # chooses different random direction
         return random_choice
     
 i = 0
@@ -289,10 +324,17 @@ def blind_no_memory(percept):
         return random_choice
     else:
         i = 0
-        random_choice = random.choice([val for val in directions if val != random_choice]) # chooses different random direction
-        return random_choice
-    
+        
+        dont_go = None
+        match directions.index(random_choice):
+            case 1: dont_go = 0
+            case 0: dont_go = 1
+            case 2: dont_go = 3
+            case 3: dont_go = 2
 
+        random_choice = random.choice([val for val in directions if val != random_choice and val != directions[dont_go]]) # chooses different random direction
+
+        return random_choice
 
 #runs all other functions
 def run_all():
@@ -355,5 +397,5 @@ def run_all():
 run_all()
 #print(run(20, 50000, neighboring_memory, "actions"))
 
-#print(many_runs(20, 50000, 100, blind_memory, "actions"))
-#print(many_runs(20, 50000, 100, blind_no_memory, "actions"))
+#print(many_runs(20, 50000, 100, blind_no_memory, "dirt"))
+#print(many_runs(20, 50000, 100, blind_memory, "dirt"))
